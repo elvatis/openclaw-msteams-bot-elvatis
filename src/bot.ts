@@ -262,7 +262,8 @@ class OpenClawTeamsBot extends ActivityHandler {
           try {
             const path = require("path");
             const fs = require("fs");
-            const pluginDir = path.dirname(__filename);
+            // Use __dirname which resolves to the plugin root directory at runtime
+            const pluginDir = __dirname;
             const tmpDir = path.join(pluginDir, "tmp");
             if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
             const ext = contentType.split("/")[1]?.split(";")[0] ?? "png";
@@ -282,7 +283,9 @@ class OpenClawTeamsBot extends ActivityHandler {
             attachmentParts.push(`[Image: ${name} (${contentType}, ${sizeKb}KB)]\ndata:${contentType};base64,${base64}`);
           }
         } else {
-          attachmentParts.push(`[Image: ${name} — authentication required (paste as file instead)]`);
+          // Inline screenshots cannot be fetched due to Teams CDN auth restrictions
+          // Prompt user to attach as file instead
+          attachmentParts.push(`[Note: The inline image "${name}" could not be loaded (Teams CDN authentication required). Please attach it as a file using the paperclip icon instead of pasting — file attachments work perfectly.]`);
         }
       }
 
@@ -327,7 +330,7 @@ class OpenClawTeamsBot extends ActivityHandler {
             } else if (isImg) {
               const _path = require("path");
               const _fs = require("fs");
-              const pluginDir2 = _path.dirname(__filename);
+              const pluginDir2 = __dirname;
               const tmpDir2 = _path.join(pluginDir2, "tmp");
               if (!_fs.existsSync(tmpDir2)) _fs.mkdirSync(tmpDir2, { recursive: true });
               const ext2 = name.split(".").pop() ?? "png";
