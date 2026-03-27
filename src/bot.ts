@@ -151,35 +151,101 @@ class OpenClawTeamsBot extends ActivityHandler {
     const text = context.activity.text?.trim() ?? "";
     const attachments = context.activity.attachments ?? [];
 
-    // Collect image attachments
-    const imageDescriptions: string[] = [];
-    for (const att of attachments) {
-      const isImage = att.contentType?.startsWith("image/");
-      const isFile = att.contentType === "application/vnd.microsoft.teams.file.download.info";
+    // Collect and describe all attachments
+    const attachmentParts: string[] = [];
+    const fetch = require("node-fetch");
 
-      if (isImage && att.contentUrl) {
+    for (const att of attachments) {
+      const contentType = att.contentType ?? "";
+      const name = att.name ?? "unnamed";
+
+      // Images — fetch and pass as base64 URL for vision models
+      if (contentType.startsWith("image/") && att.contentUrl) {
         try {
-          // Fetch image and convert to base64 for the agent
-          const fetch = require("node-fetch");
           const resp = await fetch(att.contentUrl);
-          const buffer = await resp.buffer();
-          const base64 = buffer.toString("base64");
-          const mimeType = att.contentType ?? "image/png";
-          imageDescriptions.push(`[Image attached: data:${mimeType};base64,${base64.slice(0, 100)}... (${Math.round(buffer.length / 1024)}KB)]`);
-          this.logger.debug(`Received image attachment: ${att.name ?? "unnamed"} (${att.contentType}, ${buffer.length} bytes)`);
+          if (resp.ok) {
+            const buffer = await resp.buffer();
+            const base64 = buffer.toString("base64");
+            const sizeKb = Math.round(buffer.length / 1024);
+            // Pass full base64 so vision-capable models can analyse the image
+            attachmentParts.push(`[Image: ${name} (${contentType}, ${sizeKb}KB)]\ndata:${contentType};base64,${base64}`);
+            this.logger.debug(`Fetched image: ${name} (${sizeKb}KB)`);
+          } else {
+            attachmentParts.push(`[Image: ${name} — could not fetch (HTTP ${resp.status})]`);
+          }
         } catch (err: any) {
-          this.logger.warn(`Failed to fetch image attachment: ${err.message}`);
-          imageDescriptions.push(`[Image attached: ${att.name ?? att.contentUrl}]`);
+          this.logger.warn(`Failed to fetch image: ${err.message}`);
+          attachmentParts.push(`[Image: ${name} — fetch error]`);
         }
-      } else if (isFile) {
+      }
+
+      // Audio files — mention name and type, agent cannot process binary audio directly
+      else if (contentType.startsWith("audio/") && att.contentUrl) {
+        attachmentParts.push(`[Audio file: ${name} (${contentType}) — URL: ${att.contentUrl}]`);
+      }
+
+      // Video files
+      else if (contentType.startsWith("video/") && att.contentUrl) {
+        attachmentParts.push(`[Video file: ${name} (${contentType}) — URL: ${att.contentUrl}]`);
+      }
+
+      // PDF and text documents — fetch and include content
+      else if ((contentType === "application/pdf" || contentType.startsWith("text/")) && att.contentUrl) {
+        try {
+          const resp = await fetch(att.contentUrl);
+          if (resp.ok) {
+            const buffer = await resp.buffer();
+            const sizeKb = Math.round(buffer.length / 1024);
+            if (contentType.startsWith("text/")) {
+              const content = buffer.toString("utf8").slice(0, 8000);
+              attachmentParts.push(`[Text file: ${name} (${sizeKb}KB)]\n${content}`);
+            } else {
+              attachmentParts.push(`[PDF: ${name} (${sizeKb}KB) — binary, cannot display inline]`);
+            }
+          }
+        } catch (err: any) {
+          attachmentParts.push(`[Document: ${name} — fetch error]`);
+        }
+      }
+
+      // Teams file download info (SharePoint/OneDrive)
+      else if (contentType === "application/vnd.microsoft.teams.file.download.info") {
         const fileInfo = att.content as Record<string, string> | undefined;
-        const fileName = att.name ?? fileInfo?.["uniqueId"] ?? "file";
-        imageDescriptions.push(`[File attached: ${fileName}]`);
+        const downloadUrl = fileInfo?.["downloadUrl"];
+        if (downloadUrl) {
+          try {
+            const resp = await fetch(downloadUrl);
+            if (resp.ok) {
+              const buffer = await resp.buffer();
+              const sizeKb = Math.round(buffer.length / 1024);
+              const isText = name.match(/\.(txt|md|csv|json|xml|yaml|yml|log|ts|js|py|sh)$/i);
+              if (isText) {
+                const content = buffer.toString("utf8").slice(0, 8000);
+                attachmentParts.push(`[File: ${name} (${sizeKb}KB)]\n${content}`);
+              } else if (name.match(/\.(png|jpg|jpeg|gif|webp|bmp)$/i)) {
+                const base64 = buffer.toString("base64");
+                const mime = name.match(/\.png$/i) ? "image/png" : name.match(/\.gif$/i) ? "image/gif" : "image/jpeg";
+                attachmentParts.push(`[Image: ${name} (${sizeKb}KB)]\ndata:${mime};base64,${base64}`);
+              } else {
+                attachmentParts.push(`[File: ${name} (${sizeKb}KB, ${contentType})]`);
+              }
+            }
+          } catch (err: any) {
+            attachmentParts.push(`[File: ${name} — fetch error]`);
+          }
+        } else {
+          attachmentParts.push(`[File: ${name}]`);
+        }
+      }
+
+      // Everything else — just mention it
+      else if (att.contentUrl || att.content) {
+        attachmentParts.push(`[Attachment: ${name} (${contentType || "unknown type"})]`);
       }
     }
 
-    // Combine text + attachment info
-    const fullText = [text, ...imageDescriptions].filter(Boolean).join("\n");
+    // Combine text + attachments
+    const fullText = [text, ...attachmentParts].filter(Boolean).join("\n");
     if (!fullText) return;
 
     const channelId = this.resolveChannelId(context);
