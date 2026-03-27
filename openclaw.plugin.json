@@ -1,5 +1,5 @@
 {
-  "id": "openclaw-teams-elvatis",
+  "id": "openclaw-msteams-bot-elvatis",
   "name": "OpenClaw Teams Connector (Elvatis)",
   "version": "0.1.1",
   "description": "Microsoft Teams connector for OpenClaw Gateway. Bridges Teams channels to OpenClaw sessions with per-channel system prompts.",
