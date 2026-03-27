@@ -1,66 +1,157 @@
 import { BotServer } from "./bot";
 import { SessionManager } from "./session";
-import { PluginConfig, PluginContext } from "./types";
+import { PluginConfig, GatewayAPI, InboundMessage, GatewayResponse } from "./types";
+import { execFile } from "child_process";
+import { promisify } from "util";
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * OpenClaw Plugin API interface (as provided by the gateway).
+ */
+interface OpenClawPluginApi {
+  id: string;
+  logger: {
+    info(msg: string, ...args: unknown[]): void;
+    warn(msg: string, ...args: unknown[]): void;
+    error(msg: string, ...args: unknown[]): void;
+    debug(msg: string, ...args: unknown[]): void;
+  };
+  pluginConfig: unknown;
+  registerService?: (service: { id: string; start(): Promise<void>; stop(): Promise<void> }) => void;
+}
+
+/**
+ * Build a GatewayAPI implementation that uses `openclaw system event`
+ * to send messages to the local OpenClaw agent and get responses.
+ */
+function buildGateway(logger: OpenClawPluginApi["logger"]): GatewayAPI {
+  const OPENCLAW_BIN = process.env.OPENCLAW_BIN || "/usr/local/bin/openclaw";
+  const GATEWAY_URL = `ws://127.0.0.1:18789`;
+
+  async function sendToAgent(text: string, sessionId?: string, timeoutMs = 60000): Promise<string> {
+    try {
+      // openclaw agent --message "..." --json returns the agent's reply
+      const args = [
+        "agent",
+        "--message", text,
+        "--json",
+        "--timeout", String(Math.floor(timeoutMs / 1000)),
+      ];
+
+      // Use explicit session ID if provided (per-channel sessions)
+      if (sessionId) {
+        args.push("--session-id", sessionId);
+      }
+
+      logger.debug(`[teams] Running: openclaw agent --message "${text.slice(0, 50)}..."`);
+
+      const { stdout, stderr } = await execFileAsync(OPENCLAW_BIN, args, {
+        timeout: timeoutMs + 5000,
+        env: { ...process.env, HOME: "/home/elvatis-agent" },
+      });
+
+      if (stderr) logger.debug(`[teams] openclaw stderr: ${stderr.slice(0, 200)}`);
+
+      try {
+        const result = JSON.parse(stdout.trim());
+        // openclaw agent --json returns { result: { payloads: [{ text }] } }
+        const text = result?.result?.payloads?.[0]?.text;
+        if (text) return text;
+        // fallback paths
+        if (result?.text) return result.text;
+      } catch {
+        // Not JSON -- return raw stdout
+      }
+
+      const raw = stdout.trim();
+      return raw || "Keine Antwort erhalten.";
+    } catch (err: any) {
+      logger.error(`[teams] openclaw agent failed: ${err.message}`);
+      return "Es ist ein Fehler aufgetreten. Bitte versuche es erneut.";
+    }
+  }
+
+  return {
+    async hasSession(_sessionId: string): Promise<boolean> {
+      return true; // sessions managed by gateway automatically
+    },
+    async createSession(_params: any): Promise<void> {
+      // sessions created automatically by the gateway
+    },
+    async sendMessage(message: InboundMessage): Promise<GatewayResponse> {
+      const context = message.sender
+        ? `[Teams/${message.metadata?.channelName ?? "Allgemein"} von ${message.sender}]: ${message.text}`
+        : message.text;
+
+      // Sanitize session ID -- OpenClaw only accepts alphanumeric + hyphens/underscores
+      // Hash the raw Teams channel ID to a safe short string
+      const rawId = message.sessionId ?? "default";
+      const safeId = "teams-" + rawId
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .slice(0, 40);
+
+      const text = await sendToAgent(context, safeId);
+      return { text, sessionId: message.sessionId };
+    },
+  };
+}
 
 /**
  * OpenClaw plugin that bridges Microsoft Teams channels to OpenClaw Gateway.
- *
- * Each Teams channel is mapped to its own OpenClaw session. Per-channel
- * system prompts and model overrides are supported via plugin configuration.
  */
-export default class TeamsConnectorPlugin {
-  name = "openclaw-teams-elvatis";
+export default {
+  id: "openclaw-teams-elvatis",
+  name: "OpenClaw Teams Connector (Elvatis)",
+  version: "0.1.0",
 
-  private botServer: BotServer | null = null;
-  private sessionManager: SessionManager | null = null;
+  register(api: OpenClawPluginApi): void {
+    const config = api.pluginConfig as PluginConfig;
+    const logger = api.logger;
 
-  async initialize(ctx: PluginContext): Promise<void> {
-    const config = ctx.config as PluginConfig;
-
-    if (config.enabled === false) {
-      ctx.logger.info("Teams connector plugin is disabled — skipping startup");
+    if (config?.enabled === false) {
+      logger.info("[teams] Plugin disabled — skipping startup");
       return;
     }
 
-    if (!config.appId || !config.appPassword) {
-      throw new Error(
-        "Teams connector requires appId and appPassword in plugin config",
-      );
+    if (!config?.appId || !config?.appPassword) {
+      logger.error("[teams] Missing appId or appPassword in plugin config");
+      return;
     }
 
-    ctx.logger.info("Initializing Teams connector plugin…");
+    logger.info("[teams] Registering Teams connector service…");
 
-    // Set up session management
-    this.sessionManager = new SessionManager(
-      ctx.gateway,
-      ctx.logger,
-      config.channels ?? {},
-    );
+    const gateway = buildGateway(logger);
+    let botServer: BotServer | null = null;
+    let sessionManager: SessionManager | null = null;
 
-    // Start the Bot Framework HTTP server
-    this.botServer = new BotServer(
-      config,
-      this.sessionManager,
-      ctx.gateway,
-      ctx.logger,
-    );
-
-    await this.botServer.start();
-
-    const channelCount = Object.keys(config.channels ?? {}).length;
-    ctx.logger.info(
-      `Teams connector ready — ${channelCount} channel(s) configured`,
-    );
-  }
-
-  async shutdown(): Promise<void> {
-    if (this.botServer) {
-      await this.botServer.stop();
-      this.botServer = null;
+    if (typeof api.registerService === "function") {
+      api.registerService({
+        id: "openclaw-teams-bot",
+        async start() {
+          sessionManager = new SessionManager(gateway, logger as any, config.channels ?? {});
+          botServer = new BotServer(config, sessionManager, gateway, logger as any);
+          await botServer.start();
+          const channelCount = Object.keys(config.channels ?? {}).length;
+          logger.info(`[teams] Teams bot ready — ${channelCount} channel(s) configured`);
+        },
+        async stop() {
+          if (botServer) { await botServer.stop(); botServer = null; }
+          if (sessionManager) { sessionManager.clear(); sessionManager = null; }
+        },
+      });
+    } else {
+      // Fallback: fire-and-forget
+      Promise.resolve().then(async () => {
+        try {
+          sessionManager = new SessionManager(gateway, logger as any, config.channels ?? {});
+          botServer = new BotServer(config, sessionManager, gateway, logger as any);
+          await botServer.start();
+          logger.info(`[teams] Teams bot ready (fallback mode)`);
+        } catch (err: any) {
+          logger.error(`[teams] Failed to start: ${err.message}`);
+        }
+      });
     }
-    if (this.sessionManager) {
-      this.sessionManager.clear();
-      this.sessionManager = null;
-    }
-  }
-}
+  },
+};

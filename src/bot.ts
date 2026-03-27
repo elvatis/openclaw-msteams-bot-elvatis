@@ -30,6 +30,7 @@ export class BotServer {
     this.adapter = new BotFrameworkAdapter({
       appId: config.appId,
       appPassword: config.appPassword,
+      channelAuthTenant: config.appTenantId,
     });
 
     // Global error handler — log and notify the user when something breaks.

@@ -56,6 +56,7 @@ export interface PluginConfig {
   port?: number;
   appId: string;
   appPassword: string;
+  appTenantId?: string;
   channels?: Record<string, TeamsChannelConfig>;
 }
 
