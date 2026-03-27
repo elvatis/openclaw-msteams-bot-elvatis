@@ -1,0 +1,31 @@
+{
+  "project": "openclaw-teams-elvatis",
+  "version": "0.1.0",
+  "description": "Microsoft Teams connector plugin for OpenClaw Gateway",
+  "type": "openclaw-plugin",
+  "stack": ["TypeScript", "Node.js", "Bot Framework", "Express"],
+  "repo": "https://github.com/elvatis/openclaw-teams-elvatis",
+  "owner": "Elvatis <emre.kohler@elvatis.com>",
+  "license": "Apache-2.0",
+  "created": "2026-03-27",
+  "lastUpdated": "2026-03-27",
+  "infrastructure": {
+    "server": "isp.elvatis.com",
+    "port": 3978,
+    "endpoint": "https://teams-bot.elvatis.com/api/messages",
+    "gateway": "elvatis-agent-openclaw.service",
+    "pluginPath": "/home/elvatis-agent/.openclaw/workspace/plugins/openclaw-teams-elvatis"
+  },
+  "azure": {
+    "botAppId": "8cbe4777-69c7-4e5c-b25d-2938e9f30e3d",
+    "tenantId": "458d9e09-bd7c-4835-8af0-c7fe4b5eb790",
+    "endpoint": "https://teams-bot.elvatis.com/api/messages"
+  },
+  "channels": ["Allgemein", "General", "Accounting", "Marketing", "Personal"],
+  "handoffFiles": [
+    "MANIFEST.json",
+    "STATUS.md",
+    "DASHBOARD.md",
+    "ARCHITECTURE.md"
+  ]
+}
