@@ -228,16 +228,43 @@ class OpenClawTeamsBot extends ActivityHandler {
       const fetchBuffer = (url: string) =>
         fetchWithGraphToken(url, appId, appPassword, tenantId);
 
-      // Images — fetch with Graph auth and pass as base64 for vision models
+      // Images — Teams inline images need the Bot's own OAuth token
+      // (same token used to call the Bot Connector API)
       if (contentType.startsWith("image/") && att.contentUrl) {
-        const buffer = await fetchBuffer(att.contentUrl);
+        let buffer: Buffer | null = null;
+
+        // Get Bot Framework connector token via MicrosoftAppCredentials
+        try {
+          const fetch = require("node-fetch");
+          const { MicrosoftAppCredentials } = require("botframework-connector");
+          const creds = new MicrosoftAppCredentials(appId, appPassword, tenantId);
+          const botToken = await creds.getToken();
+
+          if (botToken) {
+            const resp = await fetch(att.contentUrl, {
+              headers: { Authorization: `Bearer ${botToken}` },
+            });
+            if (resp.ok) {
+              buffer = await resp.buffer();
+              this.logger.debug(`Fetched inline image via Bot token: ${name}`);
+            } else {
+              this.logger.warn(`Bot token fetch failed (${resp.status}) for: ${name}`);
+            }
+          }
+        } catch (err: any) {
+          this.logger.warn(`Bot token fetch error: ${err.message}`);
+        }
+
+        // Fall back to Graph API token
+        if (!buffer) buffer = await fetchBuffer(att.contentUrl);
+
         if (buffer) {
           const base64 = buffer.toString("base64");
           const sizeKb = Math.round(buffer.length / 1024);
           attachmentParts.push(`[Image: ${name} (${contentType}, ${sizeKb}KB)]\ndata:${contentType};base64,${base64}`);
-          this.logger.debug(`Fetched image: ${name} (${sizeKb}KB)`);
+          this.logger.debug(`Image ready: ${name} (${sizeKb}KB)`);
         } else {
-          attachmentParts.push(`[Image: ${name} — could not fetch]`);
+          attachmentParts.push(`[Image: ${name} — authentication required (paste as file instead)]`);
         }
       }
 
