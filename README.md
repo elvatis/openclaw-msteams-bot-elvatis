@@ -287,6 +287,26 @@ Or simply type `@YourBotName` in the channel message box - Teams will prompt you
 
 ---
 
+## Image & File Support
+
+The bot supports file attachments sent via the paperclip icon in Teams.
+
+**Supported types:**
+- Images (PNG, JPG, GIF, WebP) - analysed by the AI vision model
+- Text files (.txt, .md, .csv, .json, .ts, .js, .py, etc.) - content included inline
+- SharePoint/OneDrive files - fetched automatically via download URL
+
+**How to send a file:**
+1. Click the paperclip icon in the Teams message box
+2. Select your file
+3. Send - the bot will analyse and respond
+
+**Note:** Inline images (Ctrl+V / paste) cannot be loaded due to Teams CDN authentication restrictions. Always use the paperclip attachment method.
+
+**Chat history** is automatically persisted per channel as JSONL session files. The bot remembers previous conversations within each channel session.
+
+---
+
 ### Smoke Tests
 
 After deployment, run these checks:
@@ -322,6 +342,7 @@ ss -tlnp | grep 3978
 | `Missing register/activate export` | Old plugin build in wrong directory | Copy `dist/src/*.js` files to plugin root |
 | Bot doesn't respond in channels | Bot not added to channel | Type `@BotName` in channel, confirm add |
 | App not visible in Teams admin center | Manifest zip structure wrong | Files must be in zip root, not in a subfolder |
+| Inline image (paste) not analysed | Teams CDN auth restriction | Attach as file via paperclip instead |
 
 ---
 

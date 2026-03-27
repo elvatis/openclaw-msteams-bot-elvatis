@@ -1,5 +1,21 @@
 # Changelog - openclaw-teams-elvatis
 
+## [0.1.2] - 2026-03-27
+
+### Added
+- Image and file attachment support via Bot Framework activity.attachments
+- SharePoint/OneDrive file fetching via Graph API (client credentials flow)
+- Graph API token caching to reduce Azure auth calls
+- Friendly error message for inline images (CDN auth limitation)
+- Chat history persisted automatically per channel as JSONL session files
+
+### Fixed
+- Session ID sanitization for Teams channel IDs with special characters
+- JSON response parsing: now correctly reads result.payloads[0].text
+- Plugin export format: object with register() instead of ES6 class
+- tmp/ folder for image storage uses plugin-local directory (__dirname)
+- Image files auto-deleted after 5 minutes
+
 ## [0.1.1] - 2026-03-27
 
 ### Fixed

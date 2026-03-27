@@ -1,6 +1,6 @@
 # STATUS.md - openclaw-teams-elvatis
 
-## Current Version: 0.1.0
+## Current Version: 0.1.2
 
 | Platform | Status | URL |
 |---|---|---|
@@ -36,7 +36,7 @@
 - [ ] AAHP handoff structure ✅ (2026-03-27 - this file)
 - [ ] Create CHANGELOG.md
 - [ ] package.json version bump to 0.1.1 (session ID fix + JSON parsing fix)
-- [ ] Set repo to public
+- [x] Set repo to public
 
 ## Known Fixes (since initial deploy)
 
@@ -47,3 +47,7 @@
 | `Invalid session ID` | Teams channel IDs sanitized before passing to openclaw | 0.1.1 |
 | `missing register/activate export` | Plugin export changed from class to object with `register()` | 0.1.1 |
 | `Cannot find module './bot'` | JS files must be in plugin root, not `dist/src/` | 0.1.1 |
+| Inline images (paste) not analysed | Teams CDN auth restriction; friendly error shown | 0.1.2 |
+| SharePoint file access failing | Graph API client credentials flow added | 0.1.2 |
+| Session files not persisted | Chat history now saved as JSONL per channel | 0.1.2 |
+| tmp/ path errors on some setups | Image tmp dir now uses __dirname (plugin-local) | 0.1.2 |
