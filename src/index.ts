@@ -29,7 +29,7 @@ function buildGateway(logger: OpenClawPluginApi["logger"]): GatewayAPI {
   const OPENCLAW_BIN = process.env.OPENCLAW_BIN || "/usr/local/bin/openclaw";
   const GATEWAY_URL = `ws://127.0.0.1:18789`;
 
-  async function sendToAgent(text: string, sessionId?: string, timeoutMs = 60000): Promise<string> {
+  async function sendToAgent(text: string, sessionId?: string, timeoutMs = 90000): Promise<string> {
     try {
       // openclaw agent --message "..." --json returns the agent's reply
       const args = [

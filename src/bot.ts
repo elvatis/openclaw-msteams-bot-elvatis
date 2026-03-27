@@ -229,7 +229,6 @@ class OpenClawTeamsBot extends ActivityHandler {
         fetchWithGraphToken(url, appId, appPassword, tenantId);
 
       // Images — Teams inline images need the Bot's own OAuth token
-      // (same token used to call the Bot Connector API)
       if (contentType.startsWith("image/") && att.contentUrl) {
         let buffer: Buffer | null = null;
 
@@ -259,10 +258,23 @@ class OpenClawTeamsBot extends ActivityHandler {
         if (!buffer) buffer = await fetchBuffer(att.contentUrl);
 
         if (buffer) {
-          const base64 = buffer.toString("base64");
-          const sizeKb = Math.round(buffer.length / 1024);
-          attachmentParts.push(`[Image: ${name} (${contentType}, ${sizeKb}KB)]\ndata:${contentType};base64,${base64}`);
-          this.logger.debug(`Image ready: ${name} (${sizeKb}KB)`);
+          // Save to temp file instead of inlining base64 (avoids command-line size limits)
+          try {
+            const os = require("os");
+            const path = require("path");
+            const fs = require("fs");
+            const ext = contentType.split("/")[1]?.split(";")[0] ?? "png";
+            const tmpPath = path.join(os.tmpdir(), `teams-img-${Date.now()}.${ext}`);
+            fs.writeFileSync(tmpPath, buffer);
+            const sizeKb = Math.round(buffer.length / 1024);
+            attachmentParts.push(`[Image: ${name} (${sizeKb}KB) saved to ${tmpPath} — please analyse this image file]`);
+            this.logger.debug(`Image saved to tmp: ${tmpPath} (${sizeKb}KB)`);
+          } catch (err: any) {
+            // Fallback to inline base64 if file write fails
+            const base64 = buffer.toString("base64");
+            const sizeKb = Math.round(buffer.length / 1024);
+            attachmentParts.push(`[Image: ${name} (${contentType}, ${sizeKb}KB)]\ndata:${contentType};base64,${base64}`);
+          }
         } else {
           attachmentParts.push(`[Image: ${name} — authentication required (paste as file instead)]`);
         }
