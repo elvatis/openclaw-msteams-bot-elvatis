@@ -36,7 +36,7 @@
 - [ ] AAHP handoff structure ✅ (2026-03-27 - this file)
 - [ ] Create CHANGELOG.md
 - [ ] package.json version bump to 0.1.1 (session ID fix + JSON parsing fix)
-- [ ] Repo auf public schalten
+- [ ] Set repo to public
 
 ## Known Fixes (since initial deploy)
 

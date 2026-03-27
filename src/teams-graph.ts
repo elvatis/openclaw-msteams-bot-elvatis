@@ -1,6 +1,6 @@
 /**
  * OpenClaw Skill: teams-graph
- * Microsoft Graph API — Teams file access and team/channel listing.
+ * Microsoft Graph API - Teams file access and team/channel listing.
  *
  * Required Azure AD App permissions (Application):
  *   - Files.ReadWrite.All
