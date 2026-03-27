@@ -65,10 +65,10 @@ function buildGateway(logger: OpenClawPluginApi["logger"]): GatewayAPI {
       }
 
       const raw = stdout.trim();
-      return raw || "Keine Antwort erhalten.";
+      return raw || "No response received.";
     } catch (err: any) {
       logger.error(`[teams] openclaw agent failed: ${err.message}`);
-      return "Es ist ein Fehler aufgetreten. Bitte versuche es erneut.";
+      return "An error occurred. Please try again.";
     }
   }
 
@@ -81,7 +81,7 @@ function buildGateway(logger: OpenClawPluginApi["logger"]): GatewayAPI {
     },
     async sendMessage(message: InboundMessage): Promise<GatewayResponse> {
       const context = message.sender
-        ? `[Teams/${message.metadata?.channelName ?? "Allgemein"} von ${message.sender}]: ${message.text}`
+        ? `[Teams/${message.metadata?.channelName ?? "General"} from ${message.sender}]: ${message.text}`
         : message.text;
 
       // Sanitize session ID -- OpenClaw only accepts alphanumeric + hyphens/underscores
@@ -110,7 +110,7 @@ export default {
     const logger = api.logger;
 
     if (config?.enabled === false) {
-      logger.info("[teams] Plugin disabled — skipping startup");
+      logger.info("[teams] Plugin disabled - skipping startup");
       return;
     }
 
@@ -133,7 +133,7 @@ export default {
           botServer = new BotServer(config, sessionManager, gateway, logger as any);
           await botServer.start();
           const channelCount = Object.keys(config.channels ?? {}).length;
-          logger.info(`[teams] Teams bot ready — ${channelCount} channel(s) configured`);
+          logger.info(`[teams] Teams bot ready - ${channelCount} channel(s) configured`);
         },
         async stop() {
           if (botServer) { await botServer.stop(); botServer = null; }

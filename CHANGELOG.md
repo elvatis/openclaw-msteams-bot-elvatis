@@ -1,6 +1,6 @@
-# Changelog — openclaw-teams-elvatis
+# Changelog - openclaw-teams-elvatis
 
-## [0.1.1] — 2026-03-27
+## [0.1.1] - 2026-03-27
 
 ### Fixed
 - **Session ID sanitization:** Teams channel IDs contain special characters (`:`, `@`, etc.) that OpenClaw rejected as invalid session IDs. Channel IDs are now sanitized to alphanumeric + hyphens before being passed to `openclaw agent`.
@@ -14,7 +14,7 @@
 - Session IDs are prefixed with `teams-` and limited to 40 sanitized chars
 - Tenant ID (`appTenantId`) added to `BotFrameworkAdapter` config for single-tenant bots
 
-## [0.1.0] — 2026-03-27
+## [0.1.0] - 2026-03-27
 
 ### Added
 - Initial release

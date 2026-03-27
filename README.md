@@ -4,13 +4,13 @@ Microsoft Teams connector plugin for [OpenClaw Gateway](https://github.com/openc
 
 ## Features
 
-- **Per-channel sessions** — each Teams channel maps to its own OpenClaw session
-- **Per-channel system prompts** — configure different AI personas per channel (Accounting, Marketing, HR, General)
-- **Per-channel model selection** — override the default model per channel
-- **Single-tenant & multi-tenant** — supports both Azure AD configurations
-- **Typing indicators** — shows typing activity while waiting for a response
-- **1:1, group chat, and channel support** — works everywhere in Teams
-- **Bot Framework authentication** — all requests verified via Azure JWT tokens
+- **Per-channel sessions** - each Teams channel maps to its own OpenClaw session
+- **Per-channel system prompts** - configure different AI personas per channel (Accounting, Marketing, HR, General)
+- **Per-channel model selection** - override the default model per channel
+- **Single-tenant & multi-tenant** - supports both Azure AD configurations
+- **Typing indicators** - shows typing activity while waiting for a response
+- **1:1, group chat, and channel support** - works everywhere in Teams
+- **Bot Framework authentication** - all requests verified via Azure JWT tokens
 
 ---
 
@@ -40,7 +40,7 @@ Microsoft Teams connector plugin for [OpenClaw Gateway](https://github.com/openc
 6. Note the **Microsoft App ID** (you need this later)
 7. Click **"Manage Password"** → **"New client secret"**
    - Give it a name and expiry (e.g. 24 months)
-   - **Copy the secret value immediately** — you cannot see it again
+   - **Copy the secret value immediately** - you cannot see it again
 
 ---
 
@@ -230,8 +230,8 @@ Create a `manifest.json`:
         {
           "scopes": ["personal", "team", "groupchat"],
           "commands": [
-            { "title": "Hilfe", "description": "Zeigt verfügbare Befehle an" },
-            { "title": "Status", "description": "Zeigt den aktuellen Status" }
+            { "title": "Help", "description": "Shows available commands" },
+            { "title": "Status", "description": "Shows the current status" }
           ]
         }
       ]
@@ -278,7 +278,7 @@ zip -r manifest.zip manifest-folder/
 2. Search for your bot name → **"Add to a team"**
 3. Select the channel → **Set up**
 
-Or simply type `@YourBotName` in the channel message box — Teams will prompt you to add the bot.
+Or simply type `@YourBotName` in the channel message box - Teams will prompt you to add the bot.
 
 **Using the bot:**
 - In channels: `@Akido What are our current projects?`
@@ -296,7 +296,7 @@ After deployment, run these checks:
 curl https://teams-bot.yourdomain.com/health
 # Expected: {"status":"ok","plugin":"openclaw-teams-elvatis"}
 
-# 2. Bot Framework endpoint (should return 401 Unauthorized — correct!)
+# 2. Bot Framework endpoint (should return 401 Unauthorized - correct!)
 curl -X POST https://teams-bot.yourdomain.com/api/messages
 # Expected: HTTP 401
 
@@ -315,7 +315,7 @@ ss -tlnp | grep 3978
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `401 Unauthorized` from external POST | Bot Framework auth working correctly | Normal — only Azure can send valid JWTs |
+| `401 Unauthorized` from external POST | Bot Framework auth working correctly | Normal - only Azure can send valid JWTs |
 | `503 Service Unavailable` | Apache proxy can't reach port 3978 | Check `ss -tlnp \| grep 3978`, restart gateway |
 | `Invalid session ID` error in logs | Teams channel ID contains special chars | Fixed in v0.1.1+ (session ID is sanitized) |
 | Bot responds `{"ok":true}` instead of text | Wrong JSON path parsing | Fixed in v0.1.1+ (`result.payloads[0].text`) |
@@ -383,4 +383,4 @@ Session management: `src/session.ts`
 
 ## License
 
-Apache-2.0 — Copyright 2026 Elvatis - Emre Kohler
+Apache-2.0 - Copyright 2026 Elvatis - Emre Kohler

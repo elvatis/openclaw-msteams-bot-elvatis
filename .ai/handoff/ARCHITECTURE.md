@@ -2,55 +2,55 @@
 
 ## Overview
 
-openclaw-teams-elvatis ist ein natives OpenClaw-Plugin das Microsoft Teams als Channel-Brücke zum OpenClaw Gateway implementiert. Es verwendet das Microsoft Bot Framework v4 für die Teams-Integration und leitet Nachrichten über die `openclaw agent` CLI an den lokalen OpenClaw-Agenten weiter.
+openclaw-teams-elvatis is a native OpenClaw plugin that implements Microsoft Teams as a channel bridge to the OpenClaw Gateway. It uses the Microsoft Bot Framework v4 for Teams integration and forwards messages to the local OpenClaw agent via the `openclaw agent` CLI.
 
 ## Components
 
 ### 1. Plugin Entry (`src/index.ts`)
-- Implementiert das OpenClaw Plugin Interface (`register(api)` synchron)
-- Liest Plugin-Config aus `api.pluginConfig`
-- Registriert einen Service via `api.registerService()` für async Bot-Start
-- Baut ein `GatewayAPI`-Objekt das `openclaw agent --json` als Subprocess aufruft
+- Implements the OpenClaw Plugin Interface (`register(api)` synchronously)
+- Reads plugin config from `api.pluginConfig`
+- Registers a service via `api.registerService()` for async bot startup
+- Builds a `GatewayAPI` object that calls `openclaw agent --json` as a subprocess
 
 ### 2. Bot Server (`src/bot.ts`)
-- Express HTTP Server auf Port 3978
-- Bot Framework Adapter mit App ID + Password + Tenant ID
-- `POST /api/messages` — Teams Webhook Endpoint
-- `GET /health` — Health Check
-- Leitet Messages an `SessionManager` weiter
-- Sendet Typing-Indicator während Agent antwortet
+- Express HTTP server on port 3978
+- Bot Framework Adapter with App ID + Password + Tenant ID
+- `POST /api/messages` — Teams webhook endpoint
+- `GET /health` — health check endpoint
+- Forwards messages to `SessionManager`
+- Sends a typing indicator while the agent is responding
 
 ### 3. Session Manager (`src/session.ts`)
-- Mapped Teams Channel IDs → OpenClaw Session IDs
-- Sanitized Channel IDs (Teams IDs enthalten Sonderzeichen die OpenClaw ablehnt)
-- Hält `ConversationReference` pro Channel für proaktive Nachrichten
+- Maps Teams channel IDs to OpenClaw session IDs
+- Sanitizes channel IDs (Teams IDs contain special characters that OpenClaw rejects)
+- Stores `ConversationReference` per channel for proactive messaging
 
 ### 4. Gateway Client (in `src/index.ts`)
-- `sendMessage()` ruft `openclaw agent --message "..." --session-id "..." --json` auf
-- Parsed Antwort aus `result.payloads[0].text`
-- Session-ID = `"teams-" + sanitized(channelId).slice(0, 40)`
+- `sendMessage()` calls `openclaw agent --message "..." --session-id "..." --json`
+- Parses the response from `result.payloads[0].text`
+- Session ID = `"teams-" + sanitized(channelId).slice(0, 40)`
 
 ## OpenClaw Plugin API Learnings
 
-Wichtig für zukünftige Plugins (undokumentiert, reverse-engineered 2026-03-27):
+Important for future plugins (undocumented, reverse-engineered 2026-03-27):
 
-| Aspekt | Verhalten |
+| Aspect | Behavior |
 |---|---|
-| `register(api)` | Muss **synchron** sein. Async wird ignoriert. |
-| Plugin Config | In `api.pluginConfig`, nicht `api.config` |
-| Entry Point | OpenClaw sucht `index.js` im **Plugin-Root**, nicht in `dist/` |
-| `main`-Feld | In `openclaw.plugin.json` wird **ignoriert** |
+| `register(api)` | Must be **synchronous**. Async is ignored. |
+| Plugin Config | Available at `api.pluginConfig`, not `api.config` |
+| Entry Point | OpenClaw looks for `index.js` in the **plugin root**, not in `dist/` |
+| `main` field | In `openclaw.plugin.json` is **ignored** |
 | Async Services | Via `api.registerService({ id, start(), stop() })` |
 | Export Format | `export default { id, name, version, register(api) {} }` |
-| Kein Class Export | `export default class X {}` → "cannot invoke without new" Error |
+| No Class Export | `export default class X {}` causes "cannot invoke without new" error |
 
 ## Message Flow
 
 ```
-Teams User schreibt "@Akido Hallo"
+Teams user sends "@Akido Hello"
     │
     ▼
-Azure Bot Framework validiert JWT Token
+Azure Bot Framework validates JWT token
     │
     ▼ POST /api/messages
 Bot Framework Adapter (src/bot.ts)
@@ -74,19 +74,19 @@ JSON.parse(stdout).result.payloads[0].text
 context.sendActivity(responseText)
     │
     ▼
-Teams User sieht Antwort
+Teams user sees the response
 ```
 
 ## Security
 
-- **Bot Framework Auth:** Alle eingehenden Requests werden von Azure via JWT signiert und vom BotFrameworkAdapter verifiziert. Kein gültiger Token = 401.
-- **ModSecurity:** Für `/api/messages` deaktiviert (`SecRuleEngine Off`) da OWASP CRS Rules legitime Bot Framework Requests als LFI-Angriffe fehlklassifiziert.
-- **Secrets:** Alle Secrets (App ID, Password, Tenant ID) nur in `openclaw.json` auf dem Server, nicht im Repo.
-- **Session IDs:** Sanitized um Path Traversal und ungültige Chars zu verhindern.
+- **Bot Framework Auth:** All incoming requests are signed by Azure via JWT and verified by the BotFrameworkAdapter. No valid token = 401.
+- **ModSecurity:** Disabled for `/api/messages` (`SecRuleEngine Off`) because OWASP CRS rules misclassify legitimate Bot Framework requests as LFI attacks.
+- **Secrets:** All secrets (App ID, Password, Tenant ID) are stored only in `openclaw.json` on the server, never in the repo.
+- **Session IDs:** Sanitized to prevent path traversal and invalid characters.
 
 ## Deployment Notes
 
-- Der Bot läuft als **natives OpenClaw Plugin** (nicht als separater Prozess)
-- Port 3978 wird vom `openclaw-gateway` Prozess gehalten (nicht von Node direkt)
-- Der `openclaw-teams-bot.service` (standalone) wurde deaktiviert
-- Beim Update: JS-Dateien aus `dist/src/` direkt in Plugin-Root kopieren
+- The bot runs as a **native OpenClaw plugin** (not as a separate process)
+- Port 3978 is held by the `openclaw-gateway` process (not by Node directly)
+- The `openclaw-teams-bot.service` (standalone) has been disabled
+- On update: copy JS files from `dist/src/` directly to the plugin root

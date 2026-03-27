@@ -21,7 +21,7 @@
     "tenantId": "458d9e09-bd7c-4835-8af0-c7fe4b5eb790",
     "endpoint": "https://teams-bot.elvatis.com/api/messages"
   },
-  "channels": ["Allgemein", "General", "Accounting", "Marketing", "Personal"],
+  "channels": ["General", "General", "Accounting", "Marketing", "Personal"],
   "handoffFiles": [
     "MANIFEST.json",
     "STATUS.md",

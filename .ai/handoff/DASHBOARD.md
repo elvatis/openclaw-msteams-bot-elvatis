@@ -1,4 +1,4 @@
-# DASHBOARD.md — openclaw-teams-elvatis
+# DASHBOARD.md - openclaw-teams-elvatis
 
 ## Quick Status
 
@@ -8,7 +8,7 @@ Server:    isp.elvatis.com
 Port:      3978
 Endpoint:  https://teams-bot.elvatis.com/api/messages
 Gateway:   elvatis-agent-openclaw.service (active)
-Channels:  5 (Allgemein, General, Accounting, Marketing, Personal)
+Channels:  5 (General, General, Accounting, Marketing, Personal)
 ```
 
 ## Key Commands

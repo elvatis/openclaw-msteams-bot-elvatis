@@ -1,12 +1,12 @@
-# STATUS.md — openclaw-teams-elvatis
+# STATUS.md - openclaw-teams-elvatis
 
 ## Current Version: 0.1.0
 
 | Platform | Status | URL |
 |---|---|---|
 | GitHub | ✅ private | github.com/elvatis/openclaw-teams-elvatis |
-| npm | ❌ not published | — |
-| ClawHub | ❌ not published | — |
+| npm | ❌ not published | - |
+| ClawHub | ❌ not published | - |
 
 ## Deployment Status
 
@@ -23,7 +23,7 @@
 
 | Channel | Label | Model |
 |---|---|---|
-| Allgemein | teams-general | anthropic/claude-sonnet-4-6 |
+| General | teams-general | anthropic/claude-sonnet-4-6 |
 | General | teams-general | anthropic/claude-sonnet-4-6 |
 | Accounting | teams-accounting | anthropic/claude-sonnet-4-6 |
 | Marketing | teams-marketing | anthropic/claude-sonnet-4-6 |
@@ -31,10 +31,10 @@
 
 ## Open TODOs (before public release)
 
-- [ ] Credentials scan completed ✅ (2026-03-27 — clean)
-- [ ] Git history clean ✅ (2026-03-27 — no secrets)
-- [ ] AAHP handoff structure ✅ (2026-03-27 — this file)
-- [ ] CHANGELOG.md anlegen
+- [ ] Credentials scan completed ✅ (2026-03-27 - clean)
+- [ ] Git history clean ✅ (2026-03-27 - no secrets)
+- [ ] AAHP handoff structure ✅ (2026-03-27 - this file)
+- [ ] Create CHANGELOG.md
 - [ ] package.json version bump to 0.1.1 (session ID fix + JSON parsing fix)
 - [ ] Repo auf public schalten
 

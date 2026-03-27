@@ -33,12 +33,12 @@ export class BotServer {
       channelAuthTenant: config.appTenantId,
     });
 
-    // Global error handler — log and notify the user when something breaks.
+    // Global error handler - log and notify the user when something breaks.
     this.adapter.onTurnError = async (context: TurnContext, error: Error) => {
       this.logger.error(`Bot turn error: ${error.message}`, error);
       try {
         await context.sendActivity(
-          "Es ist ein Fehler aufgetreten. Bitte versuche es erneut.",
+          "An error occurred. Please try again.",
         );
       } catch (sendErr) {
         this.logger.error(
@@ -133,7 +133,7 @@ class OpenClawTeamsBot extends ActivityHandler {
       for (const member of membersAdded) {
         if (member.id !== context.activity.recipient.id) {
           await context.sendActivity(
-            "Hallo! Ich bin der Elvatis KI-Assistent. Schreibe mir eine Nachricht, um loszulegen.",
+            "Hello! I am the Elvatis AI assistant. Send me a message to get started.",
           );
         }
       }
@@ -199,7 +199,7 @@ class OpenClawTeamsBot extends ActivityHandler {
         error,
       );
       await context.sendActivity(
-        "Es tut mir leid, ich konnte deine Nachricht nicht verarbeiten. Bitte versuche es erneut.",
+        "Sorry, I could not process your message. Please try again.",
       );
     }
   }
@@ -247,7 +247,7 @@ class OpenClawTeamsBot extends ActivityHandler {
       const match = channels.find((ch) => ch.id === channelId);
       if (match?.name) return match.name;
     } catch {
-      // TeamsInfo calls can fail in 1:1 chats — that's expected
+      // TeamsInfo calls can fail in 1:1 chats - that's expected
     }
 
     // For 1:1 chats, use "Direct" as the channel name
