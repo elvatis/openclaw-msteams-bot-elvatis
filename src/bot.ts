@@ -258,19 +258,25 @@ class OpenClawTeamsBot extends ActivityHandler {
         if (!buffer) buffer = await fetchBuffer(att.contentUrl);
 
         if (buffer) {
-          // Save to temp file instead of inlining base64 (avoids command-line size limits)
+          // Save to plugin-local tmp/ folder and clean up after use
           try {
-            const os = require("os");
             const path = require("path");
             const fs = require("fs");
+            const pluginDir = path.dirname(__filename);
+            const tmpDir = path.join(pluginDir, "tmp");
+            if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
             const ext = contentType.split("/")[1]?.split(";")[0] ?? "png";
-            const tmpPath = path.join(os.tmpdir(), `teams-img-${Date.now()}.${ext}`);
+            const tmpPath = path.join(tmpDir, `img-${Date.now()}.${ext}`);
             fs.writeFileSync(tmpPath, buffer);
             const sizeKb = Math.round(buffer.length / 1024);
-            attachmentParts.push(`[Image: ${name} (${sizeKb}KB) saved to ${tmpPath} — please analyse this image file]`);
-            this.logger.debug(`Image saved to tmp: ${tmpPath} (${sizeKb}KB)`);
+            attachmentParts.push(`[Image: ${name} (${sizeKb}KB) saved to ${tmpPath} — please analyse this image file and then delete it]`);
+            this.logger.debug(`Image saved: ${tmpPath} (${sizeKb}KB)`);
+            // Schedule cleanup after 5 minutes
+            setTimeout(() => {
+              try { fs.unlinkSync(tmpPath); } catch { /* already gone */ }
+            }, 5 * 60 * 1000);
           } catch (err: any) {
-            // Fallback to inline base64 if file write fails
+            // Fallback to inline base64
             const base64 = buffer.toString("base64");
             const sizeKb = Math.round(buffer.length / 1024);
             attachmentParts.push(`[Image: ${name} (${contentType}, ${sizeKb}KB)]\ndata:${contentType};base64,${base64}`);
@@ -319,9 +325,16 @@ class OpenClawTeamsBot extends ActivityHandler {
               const content = buffer.toString("utf8").slice(0, 8000);
               attachmentParts.push(`[File: ${name} (${sizeKb}KB)]\n${content}`);
             } else if (isImg) {
-              const base64 = buffer.toString("base64");
-              const mime = name.match(/\.png$/i) ? "image/png" : name.match(/\.gif$/i) ? "image/gif" : "image/jpeg";
-              attachmentParts.push(`[Image: ${name} (${sizeKb}KB)]\ndata:${mime};base64,${base64}`);
+              const _path = require("path");
+              const _fs = require("fs");
+              const pluginDir2 = _path.dirname(__filename);
+              const tmpDir2 = _path.join(pluginDir2, "tmp");
+              if (!_fs.existsSync(tmpDir2)) _fs.mkdirSync(tmpDir2, { recursive: true });
+              const ext2 = name.split(".").pop() ?? "png";
+              const tmpPath2 = _path.join(tmpDir2, `img-${Date.now()}.${ext2}`);
+              _fs.writeFileSync(tmpPath2, buffer);
+              attachmentParts.push(`[Image: ${name} (${sizeKb}KB) saved to ${tmpPath2} — please analyse this image file and then delete it]`);
+              setTimeout(() => { try { _fs.unlinkSync(tmpPath2); } catch { /* gone */ } }, 5 * 60 * 1000);
             } else {
               attachmentParts.push(`[File: ${name} (${sizeKb}KB)]`);
             }
