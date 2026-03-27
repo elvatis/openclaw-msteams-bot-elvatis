@@ -148,15 +148,46 @@ class OpenClawTeamsBot extends ActivityHandler {
    * 3. Send the gateway response back to Teams
    */
   private async handleIncomingMessage(context: TurnContext): Promise<void> {
-    const text = context.activity.text?.trim();
-    if (!text) return;
+    const text = context.activity.text?.trim() ?? "";
+    const attachments = context.activity.attachments ?? [];
+
+    // Collect image attachments
+    const imageDescriptions: string[] = [];
+    for (const att of attachments) {
+      const isImage = att.contentType?.startsWith("image/");
+      const isFile = att.contentType === "application/vnd.microsoft.teams.file.download.info";
+
+      if (isImage && att.contentUrl) {
+        try {
+          // Fetch image and convert to base64 for the agent
+          const fetch = require("node-fetch");
+          const resp = await fetch(att.contentUrl);
+          const buffer = await resp.buffer();
+          const base64 = buffer.toString("base64");
+          const mimeType = att.contentType ?? "image/png";
+          imageDescriptions.push(`[Image attached: data:${mimeType};base64,${base64.slice(0, 100)}... (${Math.round(buffer.length / 1024)}KB)]`);
+          this.logger.debug(`Received image attachment: ${att.name ?? "unnamed"} (${att.contentType}, ${buffer.length} bytes)`);
+        } catch (err: any) {
+          this.logger.warn(`Failed to fetch image attachment: ${err.message}`);
+          imageDescriptions.push(`[Image attached: ${att.name ?? att.contentUrl}]`);
+        }
+      } else if (isFile) {
+        const fileInfo = att.content as Record<string, string> | undefined;
+        const fileName = att.name ?? fileInfo?.["uniqueId"] ?? "file";
+        imageDescriptions.push(`[File attached: ${fileName}]`);
+      }
+    }
+
+    // Combine text + attachment info
+    const fullText = [text, ...imageDescriptions].filter(Boolean).join("\n");
+    if (!fullText) return;
 
     const channelId = this.resolveChannelId(context);
     const channelName = await this.resolveChannelName(context, channelId);
     const senderName = this.resolveSenderName(context);
 
     this.logger.debug(
-      `Received message from "${senderName}" in channel "${channelName}": ${text.substring(0, 100)}`,
+      `Received message from "${senderName}" in channel "${channelName}": ${fullText.substring(0, 100)}`,
     );
 
     // Build a conversation reference so we can reply proactively later
@@ -178,7 +209,7 @@ class OpenClawTeamsBot extends ActivityHandler {
       // Forward to OpenClaw Gateway
       const response = await this.gateway.sendMessage({
         sessionId: session.sessionId,
-        text,
+        text: fullText,
         sender: senderName,
         metadata: {
           source: "teams",
