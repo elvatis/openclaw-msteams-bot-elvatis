@@ -12,6 +12,67 @@ import http from "http";
 import { SessionManager } from "./session";
 import { GatewayAPI, Logger, PluginConfig } from "./types";
 
+// Cache Graph token to avoid fetching on every message
+let graphTokenCache: { token: string; expiresAt: number } | null = null;
+
+async function getGraphToken(appId: string, appPassword: string, tenantId: string): Promise<string | null> {
+  const now = Date.now();
+  if (graphTokenCache && graphTokenCache.expiresAt > now + 60000) {
+    return graphTokenCache.token;
+  }
+  try {
+    const fetch = require("node-fetch");
+    const resp = await fetch(
+      `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: appId,
+          client_secret: appPassword,
+          scope: "https://graph.microsoft.com/.default",
+          grant_type: "client_credentials",
+        }).toString(),
+      }
+    );
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    graphTokenCache = {
+      token: data.access_token,
+      expiresAt: now + (data.expires_in ?? 3600) * 1000,
+    };
+    return graphTokenCache.token;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchWithGraphToken(
+  url: string,
+  appId: string,
+  appPassword: string,
+  tenantId: string
+): Promise<Buffer | null> {
+  const fetch = require("node-fetch");
+  // First try without auth (works for some public CDN URLs)
+  try {
+    const resp = await fetch(url);
+    if (resp.ok) return await resp.buffer();
+  } catch { /* fall through */ }
+
+  // Try with Graph token
+  const token = await getGraphToken(appId, appPassword, tenantId);
+  if (!token) return null;
+  try {
+    const resp = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (resp.ok) return await resp.buffer();
+  } catch { /* fall through */ }
+
+  return null;
+}
+
 /**
  * Express HTTP server that exposes the Bot Framework messaging endpoint.
  */
@@ -52,6 +113,7 @@ export class BotServer {
       this.gateway,
       this.adapter,
       this.logger,
+      this.config,
     );
 
     this.app = express();
@@ -118,6 +180,7 @@ class OpenClawTeamsBot extends ActivityHandler {
     private gateway: GatewayAPI,
     private adapter: BotFrameworkAdapter,
     private logger: Logger,
+    private config: PluginConfig,
   ) {
     super();
 
@@ -153,92 +216,83 @@ class OpenClawTeamsBot extends ActivityHandler {
 
     // Collect and describe all attachments
     const attachmentParts: string[] = [];
-    const fetch = require("node-fetch");
+    const appId = this.config.appId ?? "";
+    const appPassword = this.config.appPassword ?? "";
+    const tenantId = this.config.appTenantId ?? "";
 
     for (const att of attachments) {
       const contentType = att.contentType ?? "";
       const name = att.name ?? "unnamed";
 
-      // Images — fetch and pass as base64 URL for vision models
+      // Helper: fetch URL with Graph token fallback
+      const fetchBuffer = (url: string) =>
+        fetchWithGraphToken(url, appId, appPassword, tenantId);
+
+      // Images — fetch with Graph auth and pass as base64 for vision models
       if (contentType.startsWith("image/") && att.contentUrl) {
-        try {
-          const resp = await fetch(att.contentUrl);
-          if (resp.ok) {
-            const buffer = await resp.buffer();
-            const base64 = buffer.toString("base64");
-            const sizeKb = Math.round(buffer.length / 1024);
-            // Pass full base64 so vision-capable models can analyse the image
-            attachmentParts.push(`[Image: ${name} (${contentType}, ${sizeKb}KB)]\ndata:${contentType};base64,${base64}`);
-            this.logger.debug(`Fetched image: ${name} (${sizeKb}KB)`);
-          } else {
-            attachmentParts.push(`[Image: ${name} — could not fetch (HTTP ${resp.status})]`);
-          }
-        } catch (err: any) {
-          this.logger.warn(`Failed to fetch image: ${err.message}`);
-          attachmentParts.push(`[Image: ${name} — fetch error]`);
+        const buffer = await fetchBuffer(att.contentUrl);
+        if (buffer) {
+          const base64 = buffer.toString("base64");
+          const sizeKb = Math.round(buffer.length / 1024);
+          attachmentParts.push(`[Image: ${name} (${contentType}, ${sizeKb}KB)]\ndata:${contentType};base64,${base64}`);
+          this.logger.debug(`Fetched image: ${name} (${sizeKb}KB)`);
+        } else {
+          attachmentParts.push(`[Image: ${name} — could not fetch]`);
         }
       }
 
-      // Audio files — mention name and type, agent cannot process binary audio directly
+      // Audio files
       else if (contentType.startsWith("audio/") && att.contentUrl) {
-        attachmentParts.push(`[Audio file: ${name} (${contentType}) — URL: ${att.contentUrl}]`);
+        attachmentParts.push(`[Audio file: ${name} (${contentType})]`);
       }
 
       // Video files
       else if (contentType.startsWith("video/") && att.contentUrl) {
-        attachmentParts.push(`[Video file: ${name} (${contentType}) — URL: ${att.contentUrl}]`);
+        attachmentParts.push(`[Video file: ${name} (${contentType})]`);
       }
 
-      // PDF and text documents — fetch and include content
+      // Text and PDF documents
       else if ((contentType === "application/pdf" || contentType.startsWith("text/")) && att.contentUrl) {
-        try {
-          const resp = await fetch(att.contentUrl);
-          if (resp.ok) {
-            const buffer = await resp.buffer();
-            const sizeKb = Math.round(buffer.length / 1024);
-            if (contentType.startsWith("text/")) {
-              const content = buffer.toString("utf8").slice(0, 8000);
-              attachmentParts.push(`[Text file: ${name} (${sizeKb}KB)]\n${content}`);
-            } else {
-              attachmentParts.push(`[PDF: ${name} (${sizeKb}KB) — binary, cannot display inline]`);
-            }
+        const buffer = await fetchBuffer(att.contentUrl);
+        if (buffer) {
+          const sizeKb = Math.round(buffer.length / 1024);
+          if (contentType.startsWith("text/")) {
+            const content = buffer.toString("utf8").slice(0, 8000);
+            attachmentParts.push(`[Text file: ${name} (${sizeKb}KB)]\n${content}`);
+          } else {
+            attachmentParts.push(`[PDF: ${name} (${sizeKb}KB)]`);
           }
-        } catch (err: any) {
-          attachmentParts.push(`[Document: ${name} — fetch error]`);
         }
       }
 
-      // Teams file download info (SharePoint/OneDrive)
+      // Teams SharePoint/OneDrive file
       else if (contentType === "application/vnd.microsoft.teams.file.download.info") {
         const fileInfo = att.content as Record<string, string> | undefined;
         const downloadUrl = fileInfo?.["downloadUrl"];
-        if (downloadUrl) {
-          try {
-            const resp = await fetch(downloadUrl);
-            if (resp.ok) {
-              const buffer = await resp.buffer();
-              const sizeKb = Math.round(buffer.length / 1024);
-              const isText = name.match(/\.(txt|md|csv|json|xml|yaml|yml|log|ts|js|py|sh)$/i);
-              if (isText) {
-                const content = buffer.toString("utf8").slice(0, 8000);
-                attachmentParts.push(`[File: ${name} (${sizeKb}KB)]\n${content}`);
-              } else if (name.match(/\.(png|jpg|jpeg|gif|webp|bmp)$/i)) {
-                const base64 = buffer.toString("base64");
-                const mime = name.match(/\.png$/i) ? "image/png" : name.match(/\.gif$/i) ? "image/gif" : "image/jpeg";
-                attachmentParts.push(`[Image: ${name} (${sizeKb}KB)]\ndata:${mime};base64,${base64}`);
-              } else {
-                attachmentParts.push(`[File: ${name} (${sizeKb}KB, ${contentType})]`);
-              }
+        const url = downloadUrl ?? att.contentUrl;
+        if (url) {
+          const buffer = await fetchBuffer(url);
+          if (buffer) {
+            const sizeKb = Math.round(buffer.length / 1024);
+            const isText = name.match(/\.(txt|md|csv|json|xml|yaml|yml|log|ts|js|py|sh)$/i);
+            const isImg = name.match(/\.(png|jpg|jpeg|gif|webp|bmp)$/i);
+            if (isText) {
+              const content = buffer.toString("utf8").slice(0, 8000);
+              attachmentParts.push(`[File: ${name} (${sizeKb}KB)]\n${content}`);
+            } else if (isImg) {
+              const base64 = buffer.toString("base64");
+              const mime = name.match(/\.png$/i) ? "image/png" : name.match(/\.gif$/i) ? "image/gif" : "image/jpeg";
+              attachmentParts.push(`[Image: ${name} (${sizeKb}KB)]\ndata:${mime};base64,${base64}`);
+            } else {
+              attachmentParts.push(`[File: ${name} (${sizeKb}KB)]`);
             }
-          } catch (err: any) {
-            attachmentParts.push(`[File: ${name} — fetch error]`);
+          } else {
+            attachmentParts.push(`[File: ${name} — could not fetch]`);
           }
-        } else {
-          attachmentParts.push(`[File: ${name}]`);
         }
       }
 
-      // Everything else — just mention it
+      // Everything else
       else if (att.contentUrl || att.content) {
         attachmentParts.push(`[Attachment: ${name} (${contentType || "unknown type"})]`);
       }
