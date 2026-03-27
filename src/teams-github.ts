@@ -1,6 +1,6 @@
 /**
  * OpenClaw Skill: teams-github
- * GitHub integration for Teams — repo, file, issue, and PR management.
+ * GitHub integration for Teams: repo, file, issue, and PR management.
  *
  * Authentication:
  *   Option A: GitHub App (appId, privateKey, installationId)
@@ -413,7 +413,7 @@ export async function github_get_pr(
 
 export const teamsGithubSkill = {
   name: 'teams-github',
-  description: 'GitHub integration for Teams — repo, file, issue, and PR management',
+  description: 'GitHub integration for Teams: repo, file, issue, and PR management',
   tools: {
     github_list_repos: {
       description: 'List repositories (filtered to default org if configured)',

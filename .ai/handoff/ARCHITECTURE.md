@@ -1,4 +1,4 @@
-# ARCHITECTURE.md — openclaw-teams-elvatis
+# ARCHITECTURE.md - openclaw-teams-elvatis
 
 ## Overview
 
@@ -15,8 +15,8 @@ openclaw-teams-elvatis is a native OpenClaw plugin that implements Microsoft Tea
 ### 2. Bot Server (`src/bot.ts`)
 - Express HTTP server on port 3978
 - Bot Framework Adapter with App ID + Password + Tenant ID
-- `POST /api/messages` — Teams webhook endpoint
-- `GET /health` — health check endpoint
+- `POST /api/messages`: Teams webhook endpoint
+- `GET /health`: health check endpoint
 - Forwards messages to `SessionManager`
 - Sends a typing indicator while the agent is responding
 
