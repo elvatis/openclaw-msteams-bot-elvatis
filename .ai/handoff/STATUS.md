@@ -1,12 +1,12 @@
 # STATUS.md - openclaw-teams-elvatis
 
-## Current Version: 0.1.2
+## Current Version: 0.1.3
 
 | Platform | Status | URL |
 |---|---|---|
 | GitHub | ✅ private | github.com/elvatis/openclaw-teams-elvatis |
 | npm | ❌ not published | - |
-| ClawHub | ❌ not published | - |
+| ClawHub | ✅ v0.1.3 | slug: openclaw-msteams-bot-elvatis |
 
 ## Deployment Status
 
@@ -51,3 +51,8 @@
 | SharePoint file access failing | Graph API client credentials flow added | 0.1.2 |
 | Session files not persisted | Chat history now saved as JSONL per channel | 0.1.2 |
 | tmp/ path errors on some setups | Image tmp dir now uses __dirname (plugin-local) | 0.1.2 |
+| openclaw agent CLI replaced | WebSocket-based communication to Gateway (with CLI fallback) | 0.1.3 |
+| Vision limited to CLI passthrough | Native vision: images sent as base64 via WebSocket | 0.1.3 |
+| Long responses truncated in Teams | Message splitting at paragraph boundaries (28KB limit) | 0.1.3 |
+| SharePoint fetch sent extra Bearer header | tempauth URL fetched directly, no extra auth header needed | 0.1.3 |
+| Non-zero exit code from openclaw agent | toolUse stopReason exits non-zero; stdout response now captured correctly | 0.1.3 |

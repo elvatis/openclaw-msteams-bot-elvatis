@@ -2,7 +2,7 @@
 
 ## Overview
 
-openclaw-teams-elvatis is a native OpenClaw plugin that implements Microsoft Teams as a channel bridge to the OpenClaw Gateway. It uses the Microsoft Bot Framework v4 for Teams integration and forwards messages to the local OpenClaw agent via the `openclaw agent` CLI.
+openclaw-teams-elvatis is a native OpenClaw plugin that implements Microsoft Teams as a channel bridge to the OpenClaw Gateway. It uses the Microsoft Bot Framework v4 for Teams integration and forwards messages to OpenClaw via a direct WebSocket connection to the Gateway (with fallback to the `openclaw agent` CLI).
 
 ## Components
 
@@ -26,7 +26,9 @@ openclaw-teams-elvatis is a native OpenClaw plugin that implements Microsoft Tea
 - Stores `ConversationReference` per channel for proactive messaging
 
 ### 4. Gateway Client (in `src/index.ts`)
-- `sendMessage()` calls `openclaw agent --message "..." --session-id "..." --json`
+- `sendMessage()` first attempts a direct WebSocket connection to the OpenClaw Gateway
+- Supports native vision: images passed as base64 `data:image/...;base64,...` URIs
+- Falls back to `openclaw agent --message "..." --session-id "..." --json` if WebSocket fails
 - Parses the response from `result.payloads[0].text`
 - Session ID = `"teams-" + sanitized(channelId).slice(0, 40)`
 
@@ -64,6 +66,9 @@ SessionManager.ensureSession(channelId, channelName, convRef)
     ▼
 gateway.sendMessage({ sessionId: safeId, text, sender, metadata })
     │
+    ▼ (primary path)
+WebSocket to ws://127.0.0.1:18789 (native vision support via base64)
+    │  fallback if WS fails:
     ▼
 execFile("openclaw", ["agent", "--message", fullText, "--session-id", safeId, "--json"])
     │

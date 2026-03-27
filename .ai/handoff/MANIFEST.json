@@ -1,6 +1,6 @@
 {
   "project": "openclaw-teams-elvatis",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Microsoft Teams connector plugin for OpenClaw Gateway",
   "type": "openclaw-plugin",
   "stack": ["TypeScript", "Node.js", "Bot Framework", "Express"],

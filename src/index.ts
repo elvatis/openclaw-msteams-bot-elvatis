@@ -1,10 +1,7 @@
 import { BotServer } from "./bot";
 import { SessionManager } from "./session";
 import { PluginConfig, GatewayAPI, InboundMessage, GatewayResponse } from "./types";
-import { execFile } from "child_process";
-import { promisify } from "util";
-
-const execFileAsync = promisify(execFile);
+import WebSocket from "ws";
 
 /**
  * OpenClaw Plugin API interface (as provided by the gateway).
@@ -22,74 +19,167 @@ interface OpenClawPluginApi {
 }
 
 /**
- * Build a GatewayAPI implementation that uses `openclaw system event`
- * to send messages to the local OpenClaw agent and get responses.
+ * Send a message to the OpenClaw Gateway via WebSocket and wait for the final response.
+ * Supports text and image attachments (base64 data URLs) for Vision.
  */
-function buildGateway(logger: OpenClawPluginApi["logger"]): GatewayAPI {
-  const OPENCLAW_BIN = process.env.OPENCLAW_BIN || "/usr/local/bin/openclaw";
-  const GATEWAY_URL = `ws://127.0.0.1:18789`;
+async function sendViaWebSocket(
+  text: string,
+  sessionId: string,
+  gatewayToken: string,
+  logger: OpenClawPluginApi["logger"],
+  timeoutMs = 180000,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket("ws://127.0.0.1:18789", {
+      headers: { Authorization: `Bearer ${gatewayToken}` },
+    });
 
-  async function sendToAgent(text: string, sessionId?: string, timeoutMs = 90000): Promise<string> {
+    const timer = setTimeout(() => {
+      ws.close();
+      reject(new Error("WebSocket agent timeout"));
+    }, timeoutMs);
+
+    let resolved = false;
+
+    function done(result: string) {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      ws.close();
+      resolve(result);
+    }
+
+    const msgId = `teams-msg-${Date.now()}`;
+
+    ws.on("open", () => {
+      // Authenticate first
+      ws.send(JSON.stringify({
+        id: `auth-${Date.now()}`,
+        method: "auth.token",
+        params: { token: gatewayToken },
+      }));
+    });
+
+    ws.on("message", (raw: Buffer) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+
+        // After auth, send the agent run request
+        if (msg.method === "auth.token" && msg.result?.ok) {
+          ws.send(JSON.stringify({
+            id: msgId,
+            method: "agent.run",
+            params: {
+              sessionId,
+              message: text,
+              stream: false,
+            },
+          }));
+          return;
+        }
+
+        // Wait for our request to complete
+        if (msg.id === msgId) {
+          const responseText = msg.result?.payloads?.[0]?.text
+            ?? msg.result?.text
+            ?? msg.error?.message
+            ?? "No response received.";
+          done(responseText);
+        }
+
+        // Also handle streaming/push events
+        if (msg.method === "agent.message" && msg.params?.sessionId === sessionId) {
+          const t = msg.params?.text;
+          if (t && msg.params?.final) done(t);
+        }
+      } catch { /* ignore parse errors */ }
+    });
+
+    ws.on("error", (err) => {
+      logger.warn(`[teams] WebSocket error: ${err.message}`);
+      reject(err);
+    });
+
+    ws.on("close", () => {
+      if (!resolved) reject(new Error("WebSocket closed before response"));
+    });
+  });
+}
+
+/**
+ * Build a GatewayAPI implementation.
+ */
+function buildGateway(logger: OpenClawPluginApi["logger"], gatewayToken: string): GatewayAPI {
+  const OPENCLAW_BIN = process.env.OPENCLAW_BIN || "/usr/local/bin/openclaw";
+
+  async function sendToAgent(text: string, sessionId?: string, timeoutMs = 180000): Promise<string> {
+    const safeId = sessionId ?? "teams-default";
+
+    // Try WebSocket first (supports vision via data URLs in text)
     try {
-      // openclaw agent --message "..." --json returns the agent's reply
+      logger.debug(`[teams] Sending via WebSocket to session ${safeId}`);
+      const result = await sendViaWebSocket(text, safeId, gatewayToken, logger, timeoutMs);
+      logger.debug(`[teams] WebSocket response received (${result.length} chars)`);
+      return result;
+    } catch (wsErr: any) {
+      logger.warn(`[teams] WebSocket failed: ${wsErr.message} - falling back to CLI`);
+    }
+
+    // Fallback: openclaw agent CLI (no vision support but reliable for text)
+    try {
+      const { execFile } = require("child_process");
+      const { promisify } = require("util");
+      const execFileAsync = promisify(execFile);
+
       const args = [
         "agent",
         "--message", text,
         "--json",
         "--timeout", String(Math.floor(timeoutMs / 1000)),
+        "--session-id", safeId,
       ];
 
-      // Use explicit session ID if provided (per-channel sessions)
-      if (sessionId) {
-        args.push("--session-id", sessionId);
+      logger.debug(`[teams] CLI fallback: openclaw agent`);
+
+      let stdout = "";
+      try {
+        const r = await execFileAsync(OPENCLAW_BIN, args, {
+          timeout: timeoutMs + 5000,
+          env: { ...process.env, HOME: "/home/elvatis-agent" },
+        });
+        stdout = r.stdout;
+      } catch (execErr: any) {
+        stdout = execErr.stdout ?? "";
+        if (!stdout.trim()) throw execErr;
       }
-
-      logger.debug(`[teams] Running: openclaw agent --message "${text.slice(0, 50)}..."`);
-
-      const { stdout, stderr } = await execFileAsync(OPENCLAW_BIN, args, {
-        timeout: timeoutMs + 5000,
-        env: { ...process.env, HOME: "/home/elvatis-agent" },
-      });
-
-      if (stderr) logger.debug(`[teams] openclaw stderr: ${stderr.slice(0, 200)}`);
 
       try {
         const result = JSON.parse(stdout.trim());
-        // openclaw agent --json returns { result: { payloads: [{ text }] } }
-        const text = result?.result?.payloads?.[0]?.text;
-        if (text) return text;
-        // fallback paths
-        if (result?.text) return result.text;
-      } catch {
-        // Not JSON -- return raw stdout
-      }
+        const t = result?.result?.payloads?.[0]?.text ?? result?.text;
+        if (t) return t;
+      } catch { /* not JSON */ }
 
-      const raw = stdout.trim();
-      return raw || "No response received.";
+      return stdout.trim() || "No response received.";
     } catch (err: any) {
-      logger.error(`[teams] openclaw agent failed: ${err.message}`);
+      logger.error(`[teams] CLI fallback also failed: ${err.message}`);
       return "An error occurred. Please try again.";
     }
   }
 
   return {
     async hasSession(_sessionId: string): Promise<boolean> {
-      return true; // sessions managed by gateway automatically
+      return true;
     },
     async createSession(_params: any): Promise<void> {
-      // sessions created automatically by the gateway
+      // auto-managed by gateway
     },
     async sendMessage(message: InboundMessage): Promise<GatewayResponse> {
       const context = message.sender
         ? `[Teams/${message.metadata?.channelName ?? "General"} from ${message.sender}]: ${message.text}`
         : message.text;
 
-      // Sanitize session ID -- OpenClaw only accepts alphanumeric + hyphens/underscores
-      // Hash the raw Teams channel ID to a safe short string
       const rawId = message.sessionId ?? "default";
-      const safeId = "teams-" + rawId
-        .replace(/[^a-zA-Z0-9]/g, "")
-        .slice(0, 40);
+      const safeId = "teams-" + rawId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 40);
 
       const text = await sendToAgent(context, safeId);
       return { text, sessionId: message.sessionId };
@@ -97,13 +187,10 @@ function buildGateway(logger: OpenClawPluginApi["logger"]): GatewayAPI {
   };
 }
 
-/**
- * OpenClaw plugin that bridges Microsoft Teams channels to OpenClaw Gateway.
- */
 export default {
   id: "openclaw-teams-elvatis",
   name: "OpenClaw Teams Connector (Elvatis)",
-  version: "0.1.0",
+  version: "0.1.2",
 
   register(api: OpenClawPluginApi): void {
     const config = api.pluginConfig as PluginConfig;
@@ -119,9 +206,17 @@ export default {
       return;
     }
 
-    logger.info("[teams] Registering Teams connector service…");
+    logger.info("[teams] Registering Teams connector service...");
 
-    const gateway = buildGateway(logger);
+    // Read gateway token from config file
+    let gatewayToken = "";
+    try {
+      const fs = require("fs");
+      const cfg = JSON.parse(fs.readFileSync("/home/elvatis-agent/.openclaw/openclaw.json", "utf8"));
+      gatewayToken = cfg?.gateway?.auth?.token ?? "";
+    } catch { /* fallback: no token */ }
+
+    const gateway = buildGateway(logger, gatewayToken);
     let botServer: BotServer | null = null;
     let sessionManager: SessionManager | null = null;
 
@@ -141,7 +236,6 @@ export default {
         },
       });
     } else {
-      // Fallback: fire-and-forget
       Promise.resolve().then(async () => {
         try {
           sessionManager = new SessionManager(gateway, logger as any, config.channels ?? {});

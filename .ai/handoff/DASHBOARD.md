@@ -3,7 +3,7 @@
 ## Quick Status
 
 ```
-Plugin:    openclaw-teams-elvatis v0.1.0
+Plugin:    openclaw-teams-elvatis v0.1.3
 Server:    isp.elvatis.com
 Port:      3978
 Endpoint:  https://teams-bot.elvatis.com/api/messages
@@ -63,7 +63,8 @@ teams-bot.elvatis.com (Apache + Let's Encrypt)
       ▼
 openclaw-teams-elvatis plugin (Bot Framework + Express)
       │
-      │ openclaw agent --message "..." --session-id "..." --json
+      │ WebSocket (ws://127.0.0.1:18789) - replaces openclaw agent CLI
+      │ Falls back to: openclaw agent --message "..." --session-id "..." --json
       ▼
 OpenClaw Gateway (elvatis-agent, ws://127.0.0.1:18789)
       │

@@ -220,6 +220,18 @@ class OpenClawTeamsBot extends ActivityHandler {
     const appPassword = this.config.appPassword ?? "";
     const tenantId = this.config.appTenantId ?? "";
 
+    // DEBUG: log full attachment structure
+    if (attachments.length > 0) {
+      this.logger.info(`[teams:debug] ${attachments.length} attachment(s):`);
+      for (const a of attachments) {
+        this.logger.info(`[teams:debug]  type=${a.contentType} name=${a.name} url=${a.contentUrl ?? "(none)"}`);
+        if (a.content) {
+          const raw = typeof a.content === "string" ? a.content : JSON.stringify(a.content);
+          this.logger.info(`[teams:debug]  content(500)=${raw.slice(0, 500)}`);
+        }
+      }
+    }
+
     for (const att of attachments) {
       const contentType = att.contentType ?? "";
       const name = att.name ?? "unnamed";
@@ -228,7 +240,7 @@ class OpenClawTeamsBot extends ActivityHandler {
       const fetchBuffer = (url: string) =>
         fetchWithGraphToken(url, appId, appPassword, tenantId);
 
-      // Images — Teams inline images need the Bot's own OAuth token
+      // Images -  Teams inline images need the Bot's own OAuth token
       if (contentType.startsWith("image/") && att.contentUrl) {
         let buffer: Buffer | null = null;
 
@@ -270,7 +282,14 @@ class OpenClawTeamsBot extends ActivityHandler {
             const tmpPath = path.join(tmpDir, `img-${Date.now()}.${ext}`);
             fs.writeFileSync(tmpPath, buffer);
             const sizeKb = Math.round(buffer.length / 1024);
-            attachmentParts.push(`[Image: ${name} (${sizeKb}KB) saved to ${tmpPath} — please analyse this image file and then delete it]`);
+            // Inline small images as base64 for vision; large ones as file path
+            const base64 = buffer.toString("base64");
+            const mimeInline = contentType.startsWith("image/") ? contentType : "image/png";
+            if (buffer.length < 900 * 1024) {
+              attachmentParts.push(`[Image: ${name} (${sizeKb}KB)]\ndata:${mimeInline};base64,${base64}`);
+            } else {
+              attachmentParts.push(`[Image: ${name} (${sizeKb}KB) saved to ${tmpPath} -  please read and analyse this image file using the read tool, then delete it]`);
+            }
             this.logger.debug(`Image saved: ${tmpPath} (${sizeKb}KB)`);
             // Schedule cleanup after 5 minutes
             setTimeout(() => {
@@ -285,7 +304,7 @@ class OpenClawTeamsBot extends ActivityHandler {
         } else {
           // Inline screenshots cannot be fetched due to Teams CDN auth restrictions
           // Prompt user to attach as file instead
-          attachmentParts.push(`[Note: The inline image "${name}" could not be loaded (Teams CDN authentication required). Please attach it as a file using the paperclip icon instead of pasting — file attachments work perfectly.]`);
+          attachmentParts.push(`[Note: The inline image "${name}" could not be loaded (Teams CDN authentication required). Please attach it as a file using the paperclip icon instead of pasting -  file attachments work perfectly.]`);
         }
       }
 
@@ -319,7 +338,22 @@ class OpenClawTeamsBot extends ActivityHandler {
         const downloadUrl = fileInfo?.["downloadUrl"];
         const url = downloadUrl ?? att.contentUrl;
         if (url) {
-          const buffer = await fetchBuffer(url);
+          // downloadUrl contains tempauth token -  fetch directly without extra auth
+          let buffer: Buffer | null = null;
+          try {
+            const fetch = require("node-fetch");
+            const resp = await fetch(url); // no auth header needed, tempauth is in URL
+            if (resp.ok) {
+              buffer = await resp.buffer();
+              this.logger.debug(`[teams] Direct fetch OK: ${name} (${buffer?.length} bytes)`);
+            } else {
+              this.logger.warn(`[teams] Direct fetch failed (${resp.status}), trying Graph token`);
+              buffer = await fetchBuffer(url);
+            }
+          } catch (err: any) {
+            this.logger.warn(`[teams] Direct fetch error: ${err.message}`);
+            buffer = await fetchBuffer(url);
+          }
           if (buffer) {
             const sizeKb = Math.round(buffer.length / 1024);
             const isText = name.match(/\.(txt|md|csv|json|xml|yaml|yml|log|ts|js|py|sh)$/i);
@@ -336,14 +370,79 @@ class OpenClawTeamsBot extends ActivityHandler {
               const ext2 = name.split(".").pop() ?? "png";
               const tmpPath2 = _path.join(tmpDir2, `img-${Date.now()}.${ext2}`);
               _fs.writeFileSync(tmpPath2, buffer);
-              attachmentParts.push(`[Image: ${name} (${sizeKb}KB) saved to ${tmpPath2} — please analyse this image file and then delete it]`);
+              const base64_2 = buffer.toString("base64");
+              const mimeInline2 = "image/" + (ext2 === "jpg" ? "jpeg" : ext2);
+              if (buffer.length < 900 * 1024) {
+                attachmentParts.push(`[Image: ${name} (${sizeKb}KB)]\ndata:${mimeInline2};base64,${base64_2}`);
+              } else {
+                attachmentParts.push(`[Image: ${name} (${sizeKb}KB) saved to ${tmpPath2} -  please read and analyse this image file using the read tool, then delete it]`);
+              }
               setTimeout(() => { try { _fs.unlinkSync(tmpPath2); } catch { /* gone */ } }, 5 * 60 * 1000);
             } else {
               attachmentParts.push(`[File: ${name} (${sizeKb}KB)]`);
             }
           } else {
-            attachmentParts.push(`[File: ${name} — could not fetch]`);
+            attachmentParts.push(`[File: ${name} -  could not fetch]`);
           }
+        }
+      }
+
+      // text/html attachments -  Teams sends channel images in this format
+      // The HTML contains an <img> tag with a URL that requires Bot Connector auth
+      else if (contentType === "text/html" && att.content) {
+        const html = typeof att.content === "string" ? att.content : JSON.stringify(att.content);
+        this.logger.debug(`[teams] HTML attachment content: ${html.slice(0, 500)}`);
+
+        // Extract all image src URLs
+        const srcRegex = /src=["']([^"']+)["']/gi;
+        const urls: string[] = [];
+        let m: RegExpExecArray | null;
+        while ((m = srcRegex.exec(html)) !== null) {
+          if (m[1].startsWith("http")) urls.push(m[1]);
+        }
+
+        let handled = false;
+        for (const url of urls) {
+          // Try Bot Connector token first
+          let buffer: Buffer | null = null;
+          try {
+            const fetch = require("node-fetch");
+            const { MicrosoftAppCredentials } = require("botframework-connector");
+            const creds = new MicrosoftAppCredentials(appId, appPassword, tenantId);
+            const botToken = await creds.getToken();
+            if (botToken) {
+              const resp = await fetch(url, { headers: { Authorization: `Bearer ${botToken}` } });
+              if (resp.ok) buffer = await resp.buffer();
+            }
+          } catch { /* fall through */ }
+
+          // Fall back to Graph token
+          if (!buffer) buffer = await fetchWithGraphToken(url, appId, appPassword, tenantId);
+
+          if (buffer && buffer.length > 1000) { // skip tiny/empty responses
+            const _path = require("path");
+            const _fs = require("fs");
+            const tmpDir3 = _path.join(__dirname, "tmp");
+            if (!_fs.existsSync(tmpDir3)) _fs.mkdirSync(tmpDir3, { recursive: true });
+            const tmpPath3 = _path.join(tmpDir3, `img-${Date.now()}.png`);
+            _fs.writeFileSync(tmpPath3, buffer);
+            const sizeKb = Math.round(buffer.length / 1024);
+            const base64_3 = buffer.toString("base64");
+            if (buffer.length < 900 * 1024) {
+              attachmentParts.push(`[Image: ${name} (${sizeKb}KB)]\ndata:image/png;base64,${base64_3}`);
+            } else {
+              attachmentParts.push(`[Image: ${name} (${sizeKb}KB) saved to ${tmpPath3} -  please read and analyse this image file using the read tool, then delete it]`);
+            }
+            setTimeout(() => { try { _fs.unlinkSync(tmpPath3); } catch { /* gone */ } }, 5 * 60 * 1000);
+            handled = true;
+            this.logger.info(`[teams] Fetched HTML-embedded image: ${tmpPath3} (${sizeKb}KB)`);
+            break;
+          }
+        }
+        if (!handled) {
+          // Log the URLs we tried so we can debug
+          this.logger.warn(`[teams] Could not fetch image from HTML attachment. URLs tried: ${urls.join(", ").slice(0, 200)}`);
+          attachmentParts.push(`[Image attachment received but could not be loaded (Teams CDN auth). Please share as a direct file attachment via the paperclip icon, or drag the image file directly into the chat.]`);
         }
       }
 
@@ -395,8 +494,33 @@ class OpenClawTeamsBot extends ActivityHandler {
       });
 
       // Send the response back to Teams
+      // Teams has a ~28KB message limit -  split long responses into chunks
       if (response.text) {
-        await context.sendActivity(response.text);
+        const MAX_CHARS = 20000;
+        const text = response.text;
+        if (text.length <= MAX_CHARS) {
+          await context.sendActivity(text);
+        } else {
+          // Split at paragraph boundaries
+          const chunks: string[] = [];
+          let remaining = text;
+          while (remaining.length > 0) {
+            if (remaining.length <= MAX_CHARS) {
+              chunks.push(remaining);
+              break;
+            }
+            // Find last newline before limit
+            let cutAt = remaining.lastIndexOf("\n", MAX_CHARS);
+            if (cutAt < MAX_CHARS / 2) cutAt = MAX_CHARS; // fallback to hard cut
+            chunks.push(remaining.slice(0, cutAt));
+            remaining = remaining.slice(cutAt).trimStart();
+          }
+          for (let i = 0; i < chunks.length; i++) {
+            const part = chunks.length > 1 ? `*(${i + 1}/${chunks.length})*\n${chunks[i]}` : chunks[i];
+            await context.sendActivity(part);
+            if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 500));
+          }
+        }
       }
     } catch (err) {
       const error = err as Error;

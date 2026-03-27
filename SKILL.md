@@ -18,6 +18,9 @@ Connects Microsoft Teams channels to your OpenClaw AI agent. Each Teams channel 
 - Azure Bot Framework authentication (JWT verified)
 - Single-tenant and multi-tenant Azure AD support
 - Typing indicators while the agent is processing
+- WebSocket-based agent communication (direct connection to OpenClaw Gateway)
+- Native vision support: images sent as base64 via WebSocket
+- Message splitting for long responses (Teams 28KB limit)
 - Full deployment guide included (Azure setup, Apache reverse proxy, Teams App Manifest)
 
 ## Requirements
@@ -32,4 +35,4 @@ Connects Microsoft Teams channels to your OpenClaw AI agent. Each Teams channel 
 See `README.md` for the full 9-step deployment guide covering:
 Azure Bot registration, Teams channel activation, server setup, Apache reverse proxy, manifest creation, and Teams App deployment.
 
-**Version:** 0.1.1
+**Version:** 0.1.3

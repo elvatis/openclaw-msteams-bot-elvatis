@@ -1,5 +1,19 @@
 # Changelog - openclaw-teams-elvatis
 
+## [0.1.3] - 2026-03-27
+
+### Added
+- WebSocket-based agent communication replacing openclaw agent CLI
+- Native vision support: images sent as base64 via WebSocket to OpenClaw Gateway
+- Message splitting for long responses (Teams 28KB limit, split at paragraph boundaries)
+
+### Fixed
+- Direct SharePoint/OneDrive tempauth URL fetch (no extra Bearer header needed)
+- Non-zero exit code from openclaw agent on toolUse stopReason now handled correctly
+- Debug logging for attachment structure to aid troubleshooting
+- tmp/ folder uses __dirname for guaranteed write access
+- Image auto-cleanup after 5 minutes via setTimeout
+
 ## [0.1.2] - 2026-03-27
 
 ### Added

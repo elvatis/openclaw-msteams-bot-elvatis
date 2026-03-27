@@ -301,7 +301,7 @@ The bot supports file attachments sent via the paperclip icon in Teams.
 2. Select your file
 3. Send - the bot will analyse and respond
 
-**Note:** Inline images (Ctrl+V / paste) cannot be loaded due to Teams CDN authentication restrictions. Always use the paperclip attachment method.
+**Note:** Inline images (Ctrl+V / paste) have limited support due to Teams CDN authentication. For best results, use the paperclip attachment method.
 
 **Chat history** is automatically persisted per channel as JSONL session files. The bot remembers previous conversations within each channel session.
 
@@ -343,6 +343,7 @@ ss -tlnp | grep 3978
 | Bot doesn't respond in channels | Bot not added to channel | Type `@BotName` in channel, confirm add |
 | App not visible in Teams admin center | Manifest zip structure wrong | Files must be in zip root, not in a subfolder |
 | Inline image (paste) not analysed | Teams CDN auth restriction | Attach as file via paperclip instead |
+| Long response truncated in Teams | Teams 28KB message limit | Response is automatically split into multiple messages |
 
 ---
 
