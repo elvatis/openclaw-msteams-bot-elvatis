@@ -1,6 +1,6 @@
 {
   "name": "@elvatis_com/openclaw-msteams-bot-elvatis",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Microsoft Teams connector for OpenClaw Gateway",
   "main": "dist/index.js",
   "scripts": {
